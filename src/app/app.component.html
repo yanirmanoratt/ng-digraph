@@ -1,3 +1,7 @@
 <h1>
   {{title}}
 </h1>
+<div id='graph' style=" height:100%; width:100%">
+  <!--<app-graph-draw></app-graph-draw>-->
+  <app-digraph [nodeKey]="NODE_KEY" [nodes]="nodes"></app-digraph>
+</div>

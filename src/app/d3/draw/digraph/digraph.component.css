@@ -1,0 +1,24 @@
+.wrapper{
+    height: 100%;
+    margin: 0;
+    display: flex;
+    box-shadow: none;
+    opacity: 0.5;
+    background: #F9F9F9;
+}
+svg{
+  align-content: stretch;
+  flex: 1;
+}
+.node{
+    color: white;
+    stroke: dodgerblue;
+    fill: white;
+    stroke-width: 1px;
+    cursor: pointer;
+}
+shape{
+  fill: inherit;
+  stroke: dark;
+  stroke-width: 0.5px;
+}
