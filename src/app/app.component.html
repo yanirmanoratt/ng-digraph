@@ -3,5 +3,6 @@
 </h1>
 <div id='graph' style=" height:100%; width:100%">
   <!--<app-graph-draw></app-graph-draw>-->
-  <app-digraph [nodeKey]="NODE_KEY" [nodes]="nodes"></app-digraph>
+  <app-digraph (onCreateNode)="onCreateNode($event)" (onSelectNode)="onSelectNode($event)" [nodeKey]="NODE_KEY" [nodes]="nodes"
+    [edges]="edges"></app-digraph>
 </div>

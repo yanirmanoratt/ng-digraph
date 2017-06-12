@@ -1,5 +1,57 @@
 import { Component, AfterViewInit } from '@angular/core';
 
+const EMPTY_TYPE = 'empty'; // Empty node type
+const SPECIAL_TYPE = 'special';
+const SPECIAL_CHILD_SUBTYPE = 'specialChild';
+const EMPTY_EDGE_TYPE = 'emptyEdge';
+const SPECIAL_EDGE_TYPE = 'specialEdge';
+const alphabet = 'abcdefghijklmnopqrstuvwxyz';
+
+const sample = {
+  'nodes': [
+    {
+      'id': 1,
+      'title': 'Node A',
+      'x': 258.3976135253906,
+      'y': 331.9783248901367,
+      'type': SPECIAL_TYPE
+    },
+    {
+      'id': 2,
+      'title': 'Node B',
+      'x': 593.9393920898438,
+      'y': 260.6060791015625,
+      'type': EMPTY_TYPE,
+      'subtype': SPECIAL_CHILD_SUBTYPE
+    },
+    {
+      'id': 3,
+      'title': 'Node C',
+      'x': 237.5757598876953,
+      'y': 61.81818389892578,
+      'type': EMPTY_TYPE
+    },
+    {
+      'id': 4,
+      'title': 'Node C',
+      'x': 600.5757598876953,
+      'y': 600.81818389892578,
+      'type': EMPTY_TYPE
+    }
+  ],
+  'edges': [
+    {
+      'source': 1,
+      'target': 2,
+      'type': SPECIAL_EDGE_TYPE
+    },
+    {
+      'source': 2,
+      'target': 4,
+      'type': EMPTY_EDGE_TYPE
+    }
+  ]
+};
 
 @Component({
   selector: 'app-root',
@@ -8,37 +60,45 @@ import { Component, AfterViewInit } from '@angular/core';
 })
 export class AppComponent {
   title = 'app works!';
+  nodes = [];
+  edges = [];
+  selected = {};
+  NODE_KEY = 'id'; // Key used to identify nodes
 
-  NODE_KEY = 'id' // Key used to identify nodes
-  EMPTY_TYPE = "empty"; // Empty node type
-  SPECIAL_TYPE = "special";
-  SPECIAL_CHILD_SUBTYPE = "specialChild";
-  EMPTY_EDGE_TYPE = "emptyEdge";
-  SPECIAL_EDGE_TYPE = "specialEdge";
+  constructor() {
+    this.nodes = sample.nodes;
+    this.edges = sample.edges;
+  }
 
-  nodes = [
-    {
-      "id": 1,
-      "title": "Node A",
-      "x": 258.3976135253906,
-      "y": 331.9783248901367,
-      "type": this.SPECIAL_TYPE
-    },
-    {
-      "id": 2,
-      "title": "Node B",
-      "x": 593.9393920898438,
-      "y": 260.6060791015625,
-      "type": this.EMPTY_TYPE,
-      "subtype": this.SPECIAL_CHILD_SUBTYPE
-    },
-    {
-      "id": 3,
-      "title": "Node C",
-      "x": 237.5757598876953,
-      "y": 61.81818389892578,
-      "type": this.EMPTY_TYPE
-    }
-  ]
+  // Node 'mouseUp' handler
+  onSelectNode(viewNode) {
+    // Deselect events will send Null viewNode
+    // if (!!viewNode) {
+    //   this.setState({ selected: viewNode });
+    // } else {
+    //   this.setState({ selected: {} });
+    // }
+    console.log('p:onSelectNode', viewNode);
+  }
 
+  onCreateNode({ x, y }) {
+    const nodes = this.nodes;
+
+    // This is just an example - any sort of logic
+    // could be used here to determine node type
+    // There is also support for subtypes. (see 'sample' above)
+    // The subtype geometry will underlay the 'type' geometry for a node
+    const type = Math.random() < 0.25 ? SPECIAL_TYPE : EMPTY_TYPE;
+
+    const viewNode = {
+      id: this.nodes.length + 1,
+      title: `Node ${alphabet[Math.floor(Math.random() * alphabet.length)].toUpperCase()}`,
+      type: type,
+      x: x,
+      y: y
+    };
+
+    nodes.push(viewNode);
+    this.nodes = nodes;
+  }
 }

@@ -7,9 +7,32 @@ import {
   ElementRef,
   ViewEncapsulation,
   OnDestroy,
-  ChangeDetectionStrategy
+  ChangeDetectionStrategy,
+  Output,
+  EventEmitter,
+  AfterViewChecked
 } from '@angular/core';
+
 import * as d3 from 'd3';
+
+// any objects with x & y properties
+function getTheta(pt1, pt2) {
+  const xComp = pt2.x - pt1.x;
+  const yComp = pt2.y - pt1.y;
+  const theta = Math.atan2(yComp, xComp);
+  return theta;
+}
+
+function getMidpoint(pt1, pt2) {
+  const x = (pt2.x + pt1.x) / 2;
+  const y = (pt2.y + pt1.y) / 2;
+
+  return { x: x, y: y };
+}
+
+function getDistance(pt1, pt2) {
+  return Math.sqrt(Math.pow(pt2.x - pt1.x, 2) + Math.pow(pt2.y - pt1.y, 2))
+}
 
 @Component({
   selector: 'app-digraph',
@@ -21,6 +44,9 @@ import * as d3 from 'd3';
       <defs>
         <symbol viewBox="0 0 100 100" id="empty">
           <circle cx="50" cy="50" r="45"></circle>
+        </symbol>
+        <symbol viewBox="0 0 50 50" id="specialEdge">
+          <rect transform="rotate(45)"  x="25" y="-4.5" width="15" height="15" fill="currentColor"></rect>
         </symbol>
         <marker id="end-arrow"
           key="end-arrow"
@@ -44,6 +70,18 @@ import * as d3 from 'd3';
           </circle>
         </pattern>
 
+        <filter id="dropshadow" key="dropshadow" height="130%">
+          <feGaussianBlur in="SourceAlpha" stdDeviation="3" />
+          <feOffset dx="2" dy="2" result="offsetblur" />
+          <feComponentTransfer>
+            <feFuncA type="linear" slope="0.1" />
+          </feComponentTransfer>
+          <feMerge>
+            <feMergeNode />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+
       </defs>
 
       <g id='view'>
@@ -61,13 +99,25 @@ import * as d3 from 'd3';
     `,
   styleUrls: ['./digraph.component.css']
 })
-export class DigraphComponent implements AfterContentInit, OnDestroy {
+export class DigraphComponent implements AfterContentInit, AfterViewChecked, OnDestroy {
+  hoveredNode: any;
   // The work area is infinite, but the point grid is fixed
   gridSize = 40960;
   nodeSize = 150;
   gridSpacing = 36;
   gridDot = 2;
   edgeArrowSize = 8;
+  edgeHandleSize = 50;
+  minZoom = 0.15;
+  maxZoom = 1.5;
+  zoomDelay = 500; // ms
+  zoomDur = 750; // ms
+  viewTransform = d3.zoomIdentity;
+  edgeSwapQueue: any[] = [];
+  enableFocus: boolean = false;
+  drawingEdge: boolean = false;
+  selectingNode: boolean = false;
+  focused: boolean = false;
 
   @Input() nodeKey: string;
   @Input() nodeSubtypes: any;
@@ -75,15 +125,19 @@ export class DigraphComponent implements AfterContentInit, OnDestroy {
   @Input() maxTitleChars: number = 9;
   @Input() emptyType: string;
   @Input() nodes: any[] = [];
+  @Input() edges: any[] = [];
   @Input() links: Array<{ source: any, target: any }> = [];
   @Input() readOnly: Boolean = false;
 
-  state = {
-    viewTransform: d3.zoomIdentity,
-    drawingEdge: false
-  };
+  @Output() onSelectNode = new EventEmitter();
+  @Output() onCreateNode = new EventEmitter();
 
-  constructor(private elementRef: ElementRef) { }
+  zoom = d3.zoom()
+    .scaleExtent([this.minZoom, this.maxZoom])
+    .on('zoom', this.handleZoom);
+
+  constructor(private elementRef: ElementRef) {
+  }
 
   ngOnDestroy(): void {
     // Remove window event listeners
@@ -91,35 +145,199 @@ export class DigraphComponent implements AfterContentInit, OnDestroy {
       .on('click', null);
   }
 
-  ngAfterContentInit(): void {
+  ngAfterViewChecked(): void {
     this.renderView();
   }
 
-  ngAfterViewInit(): void {
+  ngAfterContentInit(): void {
+
     d3.select(window)
       .on('click', this.handleWindowClicked);
-    const elemSvg = this.elementRef.nativeElement.querySelector('svg');
+
+    const elemSvg = this.elementRef.nativeElement.querySelector('#viewWrapper');
     const svg = d3.select(elemSvg)
-      .on('click', this.handleSvgClicked);
+      .on('touchstart', this.containZoom)
+      .on('touchmove', this.containZoom)
+      .on('click', this.handleSvgClicked.bind(this))
+      .select('svg')
+      .call(this.zoom);
 
     this.renderView();
+  }
+  // Keeps 'zoom' contained
+  containZoom() {
+    d3.event.preventDefault();
+  }
+  // View 'zoom' handler
+  handleZoom() {
+    this.viewTransform = d3.event.transform;
+  }
+
+  hideEdge(edgeDOMNode) {
+    d3.select(edgeDOMNode)
+      .attr('opacity', 0);
+  }
+
+  showEdge(edgeDOMNode) {
+    d3.select(edgeDOMNode)
+      .attr('opacity', 1);
   }
 
   handleWindowClicked(d, i) {
+    let e: any = event;
+    if (this.focused && !e.target.ownerSVGElement) {
+      if (this.enableFocus) {
+        this.focused = false;
+      }
+    }
   }
 
   handleSvgClicked(d, i) {
+    if (!this.focused) {
+      this.focused = true;
+    }
+
+    if (this.selectingNode) {
+      this.selectingNode = false;
+    } else {
+      this.onSelectNode.emit(null);
+      if (!this.readOnly && d3.event.shiftKey) {
+        let xycoords = d3.mouse(event.target);
+        this.onCreateNode.emit({ x: xycoords[0], y: xycoords[1] });
+      }
+    }
   }
 
   handleNodeMouseDown(d) {
     if (d3.event.defaultPrevented) { return; } // dragged
+    if (d3.event.shiftKey) {
+      this.selectingNode = true;
+      this.drawingEdge = true;
+      this.focused = true;
+    } else {
+      this.selectingNode = true;
+      this.focused = true;
+    }
   }
   handleNodeMouseUp(d) {
+    if (this.selectingNode) {
+      this.onSelectNode.emit(d);
+      this.selectingNode = false;
+    }
   }
   handleNodeMouseEnter(d) {
+    if (this.hoveredNode !== d) {
+      this.hoveredNode = d;
+    }
+  }
+  handleNodeMouseLeave(d): void {
+    // For whatever reason, mouseLeave is fired when edge dragging ends
+    // (and mouseup is not fired). This clears the hoverNode state prematurely
+    // resulting in swapEdge failing to fire.
+    // Detecting & ignoring mouseLeave events that result from drag ending here
+    const e = event as any;
+    const fromMouseup = e.which === 1;
+    if (this.hoveredNode === d && !fromMouseup) {
+      this.hoveredNode = null;
+    }
+  }
+  handleEdgeMouseDown(d) {
   }
 
-  handleNodeMouseLeave(d) {
+  handleEdgeDrag(d) {
+    // if (!this.state.readOnly && this.state.drawingEdge) {
+    //   const edgeDOMNode = event.target.parentElement;
+    //   const sourceNode = this.props.getViewNode(d.source);
+    //   const xycoords = d3.mouse(event.target)
+    //   const target = { x: xycoords[0], y: xycoords[1] }
+
+    //   this.hideEdge(edgeDOMNode);
+    //   this.drawEdge(sourceNode, target, this.showEdge.bind(this, edgeDOMNode))
+    // }
+  }
+
+  drawEdge(sourceNode, target, swapErrBack) {
+    // const self = this;
+
+    // const dragEdge = d3.select(this.refs.entities).append('svg:path')
+
+    // dragEdge.attr('class', 'link dragline')
+    //   .attr("style", this.state.styles.edge.selectedString)
+    //   .attr('d', self.getPathDescriptionStr(sourceNode.x, sourceNode.y, target.x, target.y));
+
+    // d3.event.on("drag", dragged).on("end", ended);
+
+    // function dragged(d) {
+    //   dragEdge.attr('d', self.getPathDescriptionStr(sourceNode.x, sourceNode.y, d3.event.x, d3.event.y))
+    // }
+
+    // function ended(d) {
+    //   dragEdge.remove();
+
+    //   let swapEdge = self.state.edgeSwapQueue.shift();
+    //   let hoveredNode = self.state.hoveredNode;
+
+    //   self.setState({
+    //     edgeSwapQueue: self.state.edgeSwapQueue,
+    //     drawingEdge: false
+    //   });
+
+    //   if (hoveredNode && self.props.canCreateEdge(sourceNode, hoveredNode)) {
+
+    //     if (swapEdge) {
+    //       if (self.props.canDeleteEdge(swapEdge) && self.canSwap(sourceNode, hoveredNode, swapEdge)) {
+    //         self.props.onSwapEdge(sourceNode, hoveredNode, swapEdge)
+    //       } else {
+    //         swapErrBack()
+    //       }
+    //     } else {
+    //       self.props.onCreateEdge(sourceNode, hoveredNode)
+    //     }
+    //   } else {
+    //     if (swapErrBack) {
+    //       swapErrBack()
+    //     }
+    //   }
+    // }
+  }
+
+  // Helper to find the index of a given node
+  getNodeIndex(searchNode) {
+    return this.nodes.findIndex((node) => {
+      return node[this.nodeKey] === searchNode[this.nodeKey];
+    });
+  }
+
+  // Given a nodeKey, return the corresponding node
+  getViewNode(nodeKey) {
+    const searchNode = {};
+    searchNode[this.nodeKey] = nodeKey;
+    const i = this.getNodeIndex(searchNode);
+    return this.nodes[i];
+  }
+
+  // Returns the svg's path.d' (geometry description) string from edge data
+  // edge.source and edge.target are node ids
+  getPathDescriptionStr(sourceX, sourceY, targetX, targetY) {
+    return `M${sourceX},${sourceY}L${targetX},${targetY}`
+  }
+
+  getPathDescription(edge) {
+    let src = this.getViewNode(edge.source);
+    let trg = this.getViewNode(edge.target);
+
+    if (src && trg) {
+      const off = this.nodeSize / 2; // from the center of the node to the perimeter
+
+      const theta = getTheta(src, trg);
+
+      const xOff = off * Math.cos(theta);
+      const yOff = off * Math.sin(theta);
+
+      return this.getPathDescriptionStr(src.x + xOff, src.y + yOff, trg.x - xOff, trg.y - yOff)
+    }
+    console.warn('Unable to get source or target for ', edge);
+    return '';
   }
 
   dragNode() {
@@ -155,7 +373,7 @@ export class DigraphComponent implements AfterContentInit, OnDestroy {
 
   // Node 'drag' handler
   handleNodeDrag() {
-    if (this.state.drawingEdge && !this.readOnly) {
+    if (this.drawingEdge && !this.readOnly) {
       const target = { x: d3.event.subject.x, y: d3.event.subject.y }
       //this.drawEdge(d3.event.subject, target);
     } else {
@@ -182,6 +400,19 @@ export class DigraphComponent implements AfterContentInit, OnDestroy {
       .text(title);
   }
 
+  getEdgeHandleTransformation(edge) {
+    let src = this.getViewNode(edge.source);
+    let trg = this.getViewNode(edge.target);
+
+    let origin = getMidpoint(src, trg);
+    let x = origin.x;
+    let y = origin.y;
+    let theta = getTheta(src, trg) * 180 / Math.PI;
+    let offset = -this.edgeHandleSize / 2;
+
+    return `translate(${x}, ${y}) rotate(${theta}) translate(${offset}, ${offset})`;
+  }
+
   // Returns a d3 transformation string from node data
   getNodeTransformation(node) {
     return 'translate(' + node.x + ',' + node.y + ')';
@@ -199,13 +430,14 @@ export class DigraphComponent implements AfterContentInit, OnDestroy {
     nodes.exit().remove();
     // Add New
     const newNodes = nodes.enter().append('g').classed('node', true);
+
     newNodes
       .attr('class', 'node')
       .on('mousedown', this.handleNodeMouseDown)
       .on('mouseup', this.handleNodeMouseUp)
       .on('mouseenter', this.handleNodeMouseEnter)
       .on('mouseleave', this.handleNodeMouseLeave)
-      .call(d3.drag().on('start', this.handleNodeDrag));
+    // .call(d3.drag().on('start', this.handleNodeDrag));
 
     newNodes.append('use').classed('subtypeShape', true)
       .attr('x', -this.nodeSize / 2).attr('y', -this.nodeSize / 2).attr('width', this.nodeSize).attr('height', this.nodeSize);
@@ -218,24 +450,60 @@ export class DigraphComponent implements AfterContentInit, OnDestroy {
 
     // Update All
     nodes.each((d, i, els) => {
-      d3.select(els[i]).select("use.shape")
+      d3.select(els[i]).select('use.shape')
         .attr('xlink:href', '#empty');
       this.renderNodeText(d, els[i]);
     })
       .attr('transform', this.getNodeTransformation);
   }
 
+  // Renders edges
+  renderEdges(entities, edgesData) {
+    const self = this;
+    // Join Data
+    let edges = entities.selectAll('g.edge')
+      .data(edgesData, (d) => `${d.source}:${d.target}`);
+    // Remove Old
+    edges.exit().remove();
+    // Add New
+    let newEdges = edges.enter().append('g').classed('edge', true);
+    newEdges
+      .on('mousedown', this.handleEdgeMouseDown)
+      .call(d3.drag().on('start', this.handleEdgeDrag));
+
+    newEdges.append('path');
+    newEdges.append('use');
+
+    // Merge
+    edges.enter().merge(edges);
+
+    // Update All
+    edges
+      .each((d, i, els) => {
+        let trans = this.getEdgeHandleTransformation(d);
+        d3.select(els[i])
+          .select('use')
+          .attr('xlink:href', '#specialEdge')
+          .attr('width', this.edgeHandleSize)
+          .attr('height', this.edgeHandleSize)
+          .attr('transform', trans);
+      })
+      .select('path')
+      .attr('d', self.getPathDescription.bind(self));
+  }
+
   renderView() {
     const nodes = this.nodes;
-    const edges = this.links;
+    const edges = this.edges;
 
     const elemView = this.elementRef.nativeElement.querySelector('#view');
     const elemEntities = this.elementRef.nativeElement.querySelector('#entities');
     const view = d3.select(elemView)
-      .attr('tansform', this.state.viewTransform);
+      .attr('tansform', this.viewTransform);
 
     const entities = d3.select(elemEntities);
 
     this.renderNodes(entities, nodes);
+    this.renderEdges(entities, edges);
   }
 }

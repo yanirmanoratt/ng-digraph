@@ -14,6 +14,7 @@ svg{
     color: white;
     stroke: dodgerblue;
     fill: white;
+    filter: url(#dropshadow);
     stroke-width: 1px;
     cursor: pointer;
 }
@@ -21,4 +22,12 @@ shape{
   fill: inherit;
   stroke: dark;
   stroke-width: 0.5px;
+}
+
+.edge{
+  color: white;
+  stroke: dodgerblue;
+  stroke-width: 2px;
+  marker-end: url(#end-arrow);
+  cursor: pointer;
 }
