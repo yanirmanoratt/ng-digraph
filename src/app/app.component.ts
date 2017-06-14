@@ -1,4 +1,4 @@
-import { Component, AfterViewInit } from '@angular/core';
+import { Component, AfterViewInit, ViewChild } from '@angular/core';
 
 const EMPTY_TYPE = 'empty'; // Empty node type
 const SPECIAL_TYPE = 'special';
@@ -60,6 +60,7 @@ const sample = {
 })
 export class AppComponent {
   title = 'app works!';
+  // @ViewChild('d3graph') d3graph;
   nodes = [];
   edges = [];
   selected = {};
@@ -70,20 +71,34 @@ export class AppComponent {
     this.edges = sample.edges;
   }
 
+  // Helper to find the index of a given node
+  getNodeIndex(searchNode) {
+    return this.nodes.findIndex((node) => {
+      return node[this.NODE_KEY] === searchNode[this.NODE_KEY];
+    });
+  }
+
+  // Helper to find the index of a given edge
+  getEdgeIndex(searchEdge) {
+    return this.edges.findIndex((edge) => {
+      return edge.source === searchEdge.source &&
+        edge.target === searchEdge.target;
+    });
+  }
+
   // Node 'mouseUp' handler
   onSelectNode(viewNode) {
     // Deselect events will send Null viewNode
-    // if (!!viewNode) {
-    //   this.setState({ selected: viewNode });
-    // } else {
-    //   this.setState({ selected: {} });
-    // }
-    console.log('p:onSelectNode', viewNode);
+    if (!!viewNode) {
+      this.selected = viewNode;
+    } else {
+      this.selected = {};
+    }
+    console.log('onSelectNode', viewNode);
   }
 
   onCreateNode({ x, y }) {
     const nodes = this.nodes;
-
     // This is just an example - any sort of logic
     // could be used here to determine node type
     // There is also support for subtypes. (see 'sample' above)
@@ -100,5 +115,64 @@ export class AppComponent {
 
     nodes.push(viewNode);
     this.nodes = nodes;
+  }
+
+  // Called by 'drag' handler, etc..
+  // to sync updates from D3 with the graph
+  onUpdateNode(viewNode) {
+    const i = this.getNodeIndex(viewNode);
+    this.nodes[i] = viewNode;
+  }
+
+  // Called when an edge is reattached to a different target.
+  onSwapEdge({ sourceNode: sourceViewNode, hoveredNode: targetViewNode, swapEdge: viewEdge }) {
+    const i = this.getEdgeIndex(viewEdge);
+    const edge = JSON.parse(JSON.stringify(this.edges[i]));
+
+    edge.source = sourceViewNode[this.NODE_KEY];
+    edge.target = targetViewNode[this.NODE_KEY];
+    this.edges[i] = edge;
+  }
+
+  // Creates a new node between two edges
+  onCreateEdge({ sourceNode: sourceViewNode, hoveredNode: targetViewNode }) {
+    // This is just an example - any sort of logic
+    // could be used here to determine edge type
+    const type = sourceViewNode.type === SPECIAL_TYPE ? SPECIAL_EDGE_TYPE : EMPTY_EDGE_TYPE;
+
+    const viewEdge = {
+      source: sourceViewNode[this.NODE_KEY],
+      target: targetViewNode[this.NODE_KEY],
+      type: type
+    };
+    this.edges.push(viewEdge);
+  }
+
+  // Edge 'mouseUp' handler
+  onSelectEdge(viewEdge) {
+    console.log('onSelectEdge', viewEdge);
+    this.selected = viewEdge;
+  }
+
+  // Deletes a node from the graph
+  onDeleteNode(viewNode) {
+    const i = this.getNodeIndex(viewNode);
+    this.nodes.splice(i, 1);
+
+    // Delete any connected edges
+    const newEdges = this.edges.filter((edge) => {
+      return edge.source !== viewNode[this.NODE_KEY] &&
+        edge.target !== viewNode[this.NODE_KEY];
+    });
+
+    this.edges = newEdges;
+    this.selected = {};
+  }
+
+  // Called when an edge is deleted
+  onDeleteEdge(viewEdge) {
+    const i = this.getEdgeIndex(viewEdge);
+    this.edges.splice(i, 1);
+    this.selected = {};
   }
 }

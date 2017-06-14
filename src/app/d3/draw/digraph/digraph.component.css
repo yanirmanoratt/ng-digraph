@@ -1,19 +1,19 @@
 .wrapper{
     height: 100%;
-    margin: 0;
+    margin: 0px;
     display: flex;
     box-shadow: none;
-    opacity: 0.5;
-    background: #F9F9F9;
+    opacity: 1;
+    background: rgb(249, 249, 249);
 }
 svg{
   align-content: stretch;
   flex: 1;
 }
 .node{
-    color: white;
+    color: #fff;
     stroke: dodgerblue;
-    fill: white;
+    fill: #fff;
     filter: url(#dropshadow);
     stroke-width: 1px;
     cursor: pointer;
@@ -25,7 +25,7 @@ shape{
 }
 
 .edge{
-  color: white;
+  color: #fff;
   stroke: dodgerblue;
   stroke-width: 2px;
   marker-end: url(#end-arrow);

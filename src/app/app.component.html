@@ -3,6 +3,7 @@
 </h1>
 <div id='graph' style=" height:100%; width:100%">
   <!--<app-graph-draw></app-graph-draw>-->
-  <app-digraph (onCreateNode)="onCreateNode($event)" (onSelectNode)="onSelectNode($event)" [nodeKey]="NODE_KEY" [nodes]="nodes"
-    [edges]="edges"></app-digraph>
+  <app-digraph (onCreateNode)="onCreateNode($event)" (onUpdateNode)="onUpdateNode($event)" (onSelectNode)="onSelectNode($event)"
+    (onSelectEdge)="onSelectEdge($event)" (onCreateEdge)="onCreateEdge($event)" (onSwapEdge)="onSwapEdge($event)" (onDeleteNode)="onDeleteNode($event)"
+    (onDeleteEdge)="onDeleteEdge($event)" [nodeKey]="NODE_KEY" [selected]="selected" [nodes]="nodes" [edges]="edges"></app-digraph>
 </div>
