@@ -171,6 +171,9 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
     this.getPathDescription = this.getPathDescription.bind(this);
     this.getEdgeHandleTransformation = this.getEdgeHandleTransformation.bind(this);
     this.getNodeTransformation = this.getNodeTransformation.bind(this);
+    this.getNodeStyle = this.getNodeStyle.bind(this);
+    this.getEdgeStyle = this.getEdgeStyle.bind(this);
+    this.getTextStyle = this.getTextStyle.bind(this);
     this.renderNodeText = this.renderNodeText.bind(this);
     this.renderEdges = this.renderEdges.bind(this);
     this.renderNodes = this.renderNodes.bind(this);
@@ -563,8 +566,10 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
 
     d3Node.selectAll('text').remove();
 
+    const style = this.getTextStyle(d, this.selected);
+
     const el = d3Node.append('text')
-      .attr('style', 'fill: #000; stroke: #000')
+      .attr('style', style)
       .attr('text-anchor', 'middle')
       .attr('dy', textOffset)
       .text(title);
@@ -586,6 +591,24 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
   // Returns a d3 transformation string from node data
   getNodeTransformation(node) {
     return 'translate(' + node.x + ',' + node.y + ')';
+  }
+
+  getNodeStyle(d, selected) {
+    return d === selected ?
+      'color:#FFF;stroke:dodgerblue;fill:dodgerblue;filter:url(#dropshadow);stroke-width:0.5px;cursor:pointer' :
+      'color:dodgerblue;stroke:#FFF;fill:#FFF;filter:url(#dropshadow);stroke-width:0.5px;cursor:pointer';
+  }
+
+  getEdgeStyle(d, selected) {
+    return d === selected ?
+      'color:dodgerblue;stroke:dodgerblue;stroke-width:2px;marker-end:url(#end-arrow);cursor:pointer' :
+      'color:#FFF;stroke:dodgerblue;stroke-width:2px;marker-end:url(#end-arrow);cursor:pointer';
+  }
+
+  getTextStyle(d, selected) {
+    return d === selected ?
+      'fill:#FFF;stroke:#FFF' :
+      'fill:#000;stroke:#000';
   }
 
   // Renders 'nodes' into entities element
@@ -629,6 +652,11 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
 
     // Update All
     nodes.each((d, i, els) => {
+      const style = self.getNodeStyle(d, self.selected);
+
+      d3.select(els[i])
+        .attr('style', style);
+
       d3.select(els[i]).select('use.shape')
         .attr('xlink:href', '#empty');
       this.renderNodeText(d, els[i]);
@@ -659,8 +687,10 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
     // Update All
     edges
       .each((d, i, els) => {
-        const trans = this.getEdgeHandleTransformation(d);
+        const style = self.getEdgeStyle(d, self.selected);
+        const trans = self.getEdgeHandleTransformation(d);
         d3.select(els[i])
+          .attr('style', style)
           .select('use')
           .attr('xlink:href', '#specialEdge')
           .attr('width', this.edgeHandleSize)
