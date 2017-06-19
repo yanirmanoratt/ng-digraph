@@ -16,30 +16,13 @@ import {
 } from '@angular/core';
 
 import { D3Service, D3, D3DragEvent, D3ZoomEvent, Selection } from 'd3-ng2-service';
-
-// any objects with x & y properties
-function getTheta(pt1, pt2) {
-  const xComp = pt2.x - pt1.x;
-  const yComp = pt2.y - pt1.y;
-  const theta = Math.atan2(yComp, xComp);
-  return theta;
-}
-
-function getMidpoint(pt1, pt2) {
-  const x = (pt2.x + pt1.x) / 2;
-  const y = (pt2.y + pt1.y) / 2;
-
-  return { x: x, y: y };
-}
-
-function getDistance(pt1, pt2) {
-  return Math.sqrt(Math.pow(pt2.x - pt1.x, 2) + Math.pow(pt2.y - pt1.y, 2));
-}
+import { getDistance, getMidpoint, getTheta } from '../utils/utils';
+import { GraphControlsComponent } from '../graph-controls/graph-controls.component';
 
 @Component({
   selector: 'app-ngraph',
   encapsulation: ViewEncapsulation.None,
-  //changeDetection: ChangeDetectionStrategy.OnPush,
+  // changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
   <div id='viewWrapper' class="wrapper">
     <svg id='svgRoot'>
@@ -101,42 +84,49 @@ function getDistance(pt1, pt2) {
         <svg:g id='entities' ref='entities'></svg:g>
       </svg:g>
     </svg>
+    <app-graph-controls
+          [minZoom]='minZoom'
+          [maxZoom]='maxZoom'
+          [zoomLevel]="viewTransform.k"
+          [zoomToFit]="handleZoomToFit"
+          [modifyZoom]="modifyZoom">
+    </app-graph-controls>
   </div>
   `,
   styles: [
     `.wrapper{
-    height: 100%;
-    margin: 0px;
-    display: flex;
-    box-shadow: none;
-    opacity: 1;
-    background: rgb(249, 249, 249);
-}
-svg{
-  align-content: stretch;
-  flex: 1;
-}
-.node{
-    color: #fff;
-    stroke: dodgerblue;
-    fill: #fff;
-    filter: url(#dropshadow);
-    stroke-width: 1px;
-    cursor: pointer;
-}
-shape{
-  fill: inherit;
-  stroke: dark;
-  stroke-width: 0.5px;
-}
+        height: 100%;
+        margin: 0px;
+        display: flex;
+        box-shadow: none;
+        opacity: 1;
+        background: rgb(249, 249, 249);
+    }
+    svg{
+      align-content: stretch;
+      flex: 1;
+    }
+    .node{
+        color: #fff;
+        stroke: dodgerblue;
+        fill: #fff;
+        filter: url(#dropshadow);
+        stroke-width: 1px;
+        cursor: pointer;
+    }
+    shape{
+      fill: inherit;
+      stroke: dark;
+      stroke-width: 0.5px;
+    }
 
-.edge{
-  color: #fff;
-  stroke: dodgerblue;
-  stroke-width: 2px;
-  marker-end: url(#end-arrow);
-  cursor: pointer;
-}
+    .edge{
+      color: #fff;
+      stroke: dodgerblue;
+      stroke-width: 2px;
+      marker-end: url(#end-arrow);
+      cursor: pointer;
+    }
     `
   ]
 })
@@ -177,9 +167,8 @@ export class NgraphComponent implements AfterViewInit, OnDestroy, OnChanges {
   @Input() maxTitleChars = 9;
   @Input() emptyType: string;
   @Input() nodes: any[] = [];
-  @Input() edges: any[] = [];
-  @Input() links: Array<{ source: any, target: any }> = [];
-  @Input() readOnly: Boolean;
+  @Input() edges: Array<{ source: any, target: any }> = [];
+  @Input() readOnly: Boolean = false;
   @Input() selected: any;
 
   @Output() onSelectNode = new EventEmitter();
@@ -191,7 +180,7 @@ export class NgraphComponent implements AfterViewInit, OnDestroy, OnChanges {
   @Output() onDeleteNode = new EventEmitter();
   @Output() onDeleteEdge = new EventEmitter();
 
-  constructor(private elementRef: ElementRef, d3Service: D3Service, private ref: ChangeDetectorRef, private zone: NgZone) {
+  constructor(private elementRef: ElementRef, d3Service: D3Service) {
     this.d3 = d3Service.getD3();
     this.viewTransform = this.d3.zoomIdentity;
     // Bind methods
@@ -215,6 +204,7 @@ export class NgraphComponent implements AfterViewInit, OnDestroy, OnChanges {
     this.containZoom = this.containZoom.bind(this);
     this.handleZoom = this.handleZoom.bind(this);
     this.handleZoomToFit = this.handleZoomToFit.bind(this);
+    this.modifyZoom = this.modifyZoom.bind(this);
     this.setZoom = this.setZoom.bind(this);
     this.getPathDescriptionStr = this.getPathDescriptionStr.bind(this);
     this.getPathDescription = this.getPathDescription.bind(this);
@@ -234,7 +224,7 @@ export class NgraphComponent implements AfterViewInit, OnDestroy, OnChanges {
   }
 
   ngOnChanges(changes) {
-    console.log("changes...", changes);
+    // console.log('changes...', changes);
     this.renderView();
   }
 
@@ -271,7 +261,6 @@ export class NgraphComponent implements AfterViewInit, OnDestroy, OnChanges {
   /*
   * Handlers/Interaction
   */
-
   hideEdge(edgeDOMNode) {
     this.d3.select(edgeDOMNode)
       .attr('opacity', 0);
@@ -314,7 +303,7 @@ export class NgraphComponent implements AfterViewInit, OnDestroy, OnChanges {
             self.onSwapEdge.emit({ sourceNode, hoveredNode, swapEdge });
             self.renderView();
           } else {
-            swapErrBack();
+            swapErrBack('swap edge error');
           }
         } else {
           self.onCreateEdge.emit({ sourceNode, hoveredNode });
@@ -322,7 +311,7 @@ export class NgraphComponent implements AfterViewInit, OnDestroy, OnChanges {
         }
       } else {
         if (swapErrBack) {
-          swapErrBack();
+          swapErrBack('error on draw edge');
         }
       }
     }
@@ -341,7 +330,8 @@ export class NgraphComponent implements AfterViewInit, OnDestroy, OnChanges {
 
   // Zooms to contents of this.refs.entities
   handleZoomToFit() {
-    const parent = this.d3.select(this.elemView).node();
+    const elemSvg = this.elementRef.nativeElement.querySelector('#viewWrapper');
+    const parent = this.d3.select(elemSvg).node();
     const entities = this.d3.select(this.elemEntities).node();
 
     const viewBBox = entities.getBBox();
@@ -383,15 +373,43 @@ export class NgraphComponent implements AfterViewInit, OnDestroy, OnChanges {
     this.setZoom(next.k, next.x, next.y, this.zoomDur);
   }
 
+  // Updates current viewTransform with some delta
+  modifyZoom(modK = 0, modX = 0, modY = 0, dur = 0) {
+    const elemSvg = this.elementRef.nativeElement.querySelector('#viewWrapper');
+    const parent = this.d3.select(elemSvg).node();
+    const width = parent.clientWidth;
+    const height = parent.clientHeight;
+
+    let target_zoom,
+      center = [width / 2, height / 2],
+      extent = this.zoom.scaleExtent(),
+      translate = [this.viewTransform.x, this.viewTransform.y],
+      translate0 = [],
+      l = [],
+      next = { x: translate[0], y: translate[1], k: this.viewTransform.k };
+
+    target_zoom = next.k * (1 + modK);
+
+    if (target_zoom < extent[0] || target_zoom > extent[1]) { return false; }
+
+    translate0 = [(center[0] - next.x) / next.k, (center[1] - next.y) / next.k];
+    next.k = target_zoom;
+    l = [translate0[0] * next.k + next.x, translate0[1] * next.k + next.y];
+
+    next.x += center[0] - l[0] + modX;
+    next.y += center[1] - l[1] + modY;
+
+    this.setZoom(next.k, next.x, next.y, dur)
+  }
+
   // Programmatically resets zoom
   setZoom(k = 1, x = 0, y = 0, dur = 0) {
+    // this.d3.select(this.elemView).select('svg')
+    //   .transition()
+    //   .duration(dur)
+    //   .call(this.zoom.transform, t);
 
-    const t = this.d3.zoomIdentity.translate(x, y).scale(k);
-
-    this.d3.select(this.elemView).select('svg')
-      .transition()
-      .duration(dur)
-      .call(this.zoom.transform, t);
+    this.viewTransform = this.d3.zoomIdentity.translate(x, y).scale(k);
   }
 
   handleWindowKeydown(d, i) {
@@ -743,6 +761,11 @@ export class NgraphComponent implements AfterViewInit, OnDestroy, OnChanges {
     newEdges
       .on('mousedown', this.handleEdgeMouseDown)
       .call(this.d3.drag().on('start', this.handleEdgeDrag));
+
+    newEdges.attr('opacity', 0)
+      .transition()
+      .duration(self.transitionTime)
+      .attr('opacity', 1);
 
     newEdges.append('path');
     newEdges.append('use');

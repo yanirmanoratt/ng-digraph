@@ -60,9 +60,7 @@ const sample = {
   styleUrls: ['./app.component.css']
 })
 export class AppComponent {
-  title = 'app works!';
-  // @ViewChild('d3graph') d3graph;
-  @ViewChild(NgraphComponent) graph: NgraphComponent
+  @ViewChild(NgraphComponent) graph: NgraphComponent;
   nodes = [];
   edges = [];
   selected = {};
@@ -72,6 +70,15 @@ export class AppComponent {
   constructor() {
     this.nodes = sample.nodes;
     this.edges = sample.edges;
+    // Bind methods
+    this.onSelectNode = this.onSelectNode.bind(this);
+    this.onCreateNode = this.onCreateNode.bind(this);
+    this.onUpdateNode = this.onUpdateNode.bind(this);
+    this.onDeleteNode = this.onDeleteNode.bind(this);
+    this.onSelectEdge = this.onSelectEdge.bind(this);
+    this.onCreateEdge = this.onCreateEdge.bind(this);
+    this.onSwapEdge = this.onSwapEdge.bind(this);
+    this.onDeleteEdge = this.onDeleteEdge.bind(this);
   }
 
   exportDate(): void {
@@ -155,7 +162,7 @@ export class AppComponent {
 
   // Edge 'mouseUp' handler
   onSelectEdge(viewEdge) {
-    console.log('onSelectEdge', viewEdge);
+    //console.log('onSelectEdge', viewEdge);
     this.selected = viewEdge;
   }
 
