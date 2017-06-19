@@ -8,11 +8,14 @@ import {
   OnDestroy,
   Output,
   EventEmitter,
-  // ChangeDetectionStrategy,
-  // ChangeDetectorRef
+  SimpleChange,
+  OnChanges,
+  ChangeDetectorRef,
+  NgZone,
+  ChangeDetectionStrategy
 } from '@angular/core';
 
-import * as d3 from 'd3';
+import { D3Service, D3, D3DragEvent, D3ZoomEvent, Selection } from 'd3-ng2-service';
 
 // any objects with x & y properties
 function getTheta(pt1, pt2) {
@@ -34,11 +37,10 @@ function getDistance(pt1, pt2) {
 }
 
 @Component({
-  selector: 'app-digraph',
+  selector: 'app-ngraph',
   encapsulation: ViewEncapsulation.None,
-  // changeDetection: ChangeDetectionStrategy.OnPush,
+  //changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-  {{renderView()}}
   <div id='viewWrapper' class="wrapper">
     <svg id='svgRoot'>
       <defs>
@@ -100,10 +102,50 @@ function getDistance(pt1, pt2) {
       </svg:g>
     </svg>
   </div>
-    `,
-  styleUrls: ['./digraph.component.css']
+  `,
+  styles: [
+    `.wrapper{
+    height: 100%;
+    margin: 0px;
+    display: flex;
+    box-shadow: none;
+    opacity: 1;
+    background: rgb(249, 249, 249);
+}
+svg{
+  align-content: stretch;
+  flex: 1;
+}
+.node{
+    color: #fff;
+    stroke: dodgerblue;
+    fill: #fff;
+    filter: url(#dropshadow);
+    stroke-width: 1px;
+    cursor: pointer;
+}
+shape{
+  fill: inherit;
+  stroke: dark;
+  stroke-width: 0.5px;
+}
+
+.edge{
+  color: #fff;
+  stroke: dodgerblue;
+  stroke-width: 2px;
+  marker-end: url(#end-arrow);
+  cursor: pointer;
+}
+    `
+  ]
 })
-export class DigraphComponent implements AfterViewInit, OnDestroy {
+export class NgraphComponent implements AfterViewInit, OnDestroy, OnChanges {
+
+  private d3: D3;
+  private parentNativeElement: any;
+  private d3Svg: Selection<SVGSVGElement, any, null, undefined>;
+
   hoveredNode: any;
   gridSize = 40960;
   nodeSize = 150;
@@ -115,7 +157,7 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
   maxZoom = 1.5;
   zoomDelay = 500; // ms
   zoomDur = 750; // ms
-  viewTransform = d3.zoomIdentity;
+  viewTransform;
   transitionTime = 150;
   edgeSwapQueue: any[] = [];
   enableFocus = false;
@@ -126,8 +168,8 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
   canCreateEdge: Function = () => true;
   canDeleteEdge: Function = () => true;
   zoom: any;
-  elemView: ElementRef;
-  elemEntities: ElementRef;
+  elemView: any;
+  elemEntities: any;
 
   @Input() nodeKey: string;
   @Input() nodeSubtypes: any;
@@ -149,7 +191,9 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
   @Output() onDeleteNode = new EventEmitter();
   @Output() onDeleteEdge = new EventEmitter();
 
-  constructor(private elementRef: ElementRef) {
+  constructor(private elementRef: ElementRef, d3Service: D3Service, private ref: ChangeDetectorRef, private zone: NgZone) {
+    this.d3 = d3Service.getD3();
+    this.viewTransform = this.d3.zoomIdentity;
     // Bind methods
     this.hideEdge = this.hideEdge.bind(this);
     this.showEdge = this.showEdge.bind(this);
@@ -184,26 +228,31 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
     this.renderNodes = this.renderNodes.bind(this);
     this.renderView = this.renderView.bind(this);
 
-    this.zoom = d3.zoom()
+    this.zoom = this.d3.zoom()
       .scaleExtent([this.minZoom, this.maxZoom])
       .on('zoom', this.handleZoom.bind(this));
   }
 
+  ngOnChanges(changes) {
+    console.log("changes...", changes);
+    this.renderView();
+  }
+
   ngOnDestroy(): void {
     // Remove window event listeners
-    d3.select(window)
+    this.d3.select(window)
       .on('keydown', null)
       .on('click', null);
   }
 
   ngAfterViewInit(): void {
 
-    d3.select(window)
+    this.d3.select(window)
       .on('keydown', this.handleWindowKeydown)
       .on('click', this.handleWindowClicked);
 
     const elemSvg = this.elementRef.nativeElement.querySelector('#viewWrapper');
-    const svg = d3.select(elemSvg)
+    const svg = this.d3.select(elemSvg)
       .on('touchstart', this.containZoom)
       .on('touchmove', this.containZoom)
       .on('click', this.handleSvgClicked)
@@ -224,12 +273,12 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
   */
 
   hideEdge(edgeDOMNode) {
-    d3.select(edgeDOMNode)
+    this.d3.select(edgeDOMNode)
       .attr('opacity', 0);
   }
 
   showEdge(edgeDOMNode) {
-    d3.select(edgeDOMNode)
+    this.d3.select(edgeDOMNode)
       .attr('opacity', 1);
   }
 
@@ -240,16 +289,16 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
 
   drawEdge(sourceNode, target, swapErrBack) {
     const self = this;
-    const dragEdge = d3.select(this.elemEntities).append('svg:path');
+    const dragEdge = this.d3.select(this.elemEntities).append('svg:path');
 
     dragEdge.attr('class', 'link dragline')
       .attr('style', 'color:dodgerblue; stroke:dodgerblue; stroke-width: 2px; marker-end: url(#end-arrow); cursor: pointer;')
       .attr('d', self.getPathDescriptionStr(sourceNode.x, sourceNode.y, target.x, target.y));
 
-    d3.event.on('drag', dragged).on('end', ended);
+    this.d3.event.on('drag', dragged).on('end', ended);
 
     function dragged(d) {
-      dragEdge.attr('d', self.getPathDescriptionStr(sourceNode.x, sourceNode.y, d3.event.x, d3.event.y));
+      dragEdge.attr('d', self.getPathDescriptionStr(sourceNode.x, sourceNode.y, self.d3.event.x, self.d3.event.y));
     }
 
     function ended(d) {
@@ -260,15 +309,16 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
       self.drawingEdge = false;
 
       if (hoveredNode && self.canCreateEdge(sourceNode, hoveredNode)) {
-
         if (swapEdge) {
           if (self.canDeleteEdge(swapEdge) && self.canSwap(sourceNode, hoveredNode, swapEdge)) {
             self.onSwapEdge.emit({ sourceNode, hoveredNode, swapEdge });
+            self.renderView();
           } else {
             swapErrBack();
           }
         } else {
           self.onCreateEdge.emit({ sourceNode, hoveredNode });
+          self.renderView();
         }
       } else {
         if (swapErrBack) {
@@ -280,19 +330,19 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
 
   // Keeps 'zoom' contained
   containZoom() {
-    d3.event.preventDefault();
+    this.d3.event.preventDefault();
   }
   // View 'zoom' handler
   handleZoom() {
     if (this.focused) {
-      this.viewTransform = d3.event.transform;
+      this.viewTransform = this.d3.event.transform;
     }
   }
 
   // Zooms to contents of this.refs.entities
   handleZoomToFit() {
-    const parent = d3.select(this.elemView).node();
-    const entities = d3.select(this.elemEntities).node();
+    const parent = this.d3.select(this.elemView).node();
+    const entities = this.d3.select(this.elemEntities).node();
 
     const viewBBox = entities.getBBox();
 
@@ -336,9 +386,9 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
   // Programmatically resets zoom
   setZoom(k = 1, x = 0, y = 0, dur = 0) {
 
-    const t = d3.zoomIdentity.translate(x, y).scale(k);
+    const t = this.d3.zoomIdentity.translate(x, y).scale(k);
 
-    d3.select(this.elemView).select('svg')
+    this.d3.select(this.elemView).select('svg')
       .transition()
       .duration(dur)
       .call(this.zoom.transform, t);
@@ -348,7 +398,7 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
     // Conditionally ignore keypress events on the window
     // if the Graph isn't focused
     if (this.focused) {
-      switch (d3.event.key) {
+      switch (this.d3.event.key) {
         case 'Delete':
           this.handleDelete();
           break;
@@ -405,15 +455,15 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
       this.selectingNode = false;
     } else {
       this.onSelectNode.emit(null);
-      if (!this.readOnly && d3.event.shiftKey) {
-        const xycoords = d3.mouse(event.target);
+      if (!this.readOnly && this.d3.event.shiftKey) {
+        const xycoords = this.d3.mouse(this.d3.event.target);
         this.onCreateNode.emit({ x: xycoords[0], y: xycoords[1] });
       }
     }
   }
   handleNodeMouseDown(d) {
-    if (d3.event.defaultPrevented) { return; } // dragged
-    if (d3.event.shiftKey) {
+    if (this.d3.event.defaultPrevented) { return; } // dragged
+    if (this.d3.event.shiftKey) {
       this.selectingNode = true;
       this.drawingEdge = true;
       this.focused = true;
@@ -451,7 +501,7 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
     const e: any = event.target;
     if (e.tagName !== 'path') { return false; }; // If the handle is clicked
 
-    const xycoords = d3.mouse(e);
+    const xycoords = this.d3.mouse(e);
     const target = this.getViewNode(d.target);
     const dist = getDistance({ x: xycoords[0], y: xycoords[1] }, target);
 
@@ -472,7 +522,7 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
       const e: any = event.target;
       const edgeDOMNode = e.parentElement;
       const sourceNode = this.getViewNode(d.source);
-      const xycoords = d3.mouse(e);
+      const xycoords = this.d3.mouse(e);
       const target = { x: xycoords[0], y: xycoords[1] };
 
       this.hideEdge(edgeDOMNode);
@@ -498,15 +548,15 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
   dragNode() {
     const self = this;
 
-    const el = d3.select(d3.event.target.parentElement); // Enclosing 'g' element
+    const el = this.d3.select(this.d3.event.target.parentElement); // Enclosing 'g' element
     el.classed('dragging', true);
-    d3.event.on('drag', dragged).on('end', ended);
+    this.d3.event.on('drag', dragged).on('end', ended);
 
     function dragged(d) {
       if (self.readOnly) { return; }
-      d3.select(this).attr('transform', function (d) {
-        d.x += d3.event.dx;
-        d.y += d3.event.dy;
+      self.d3.select(this).attr('transform', function (d: any) {
+        d.x += self.d3.event.dx;
+        d.y += self.d3.event.dy;
         return 'translate(' + d.x + ',' + d.y + ')';
       });
       self.renderView();
@@ -516,13 +566,13 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
       el.classed('dragging', false);
 
       if (!self.readOnly) {
-        const d = d3.select(this).datum();
+        const d = self.d3.select(this).datum();
         self.onUpdateNode.emit(d);
       }
 
       // For some reason, mouseup isn't firing
       // - manually firing it here
-      d3.select(this).node().dispatchEvent(new Event('mouseup'));
+      self.d3.select(this).node().dispatchEvent(new Event('mouseup'));
     }
   }
 
@@ -533,8 +583,8 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
   // Node 'drag' handler
   handleNodeDrag() {
     if (this.drawingEdge && !this.readOnly) {
-      const target = { x: d3.event.subject.x, y: d3.event.subject.y };
-      this.drawEdge(d3.event.subject, target, this.errorHandler);
+      const target = { x: this.d3.event.subject.x, y: this.d3.event.subject.y };
+      this.drawEdge(this.d3.event.subject, target, this.errorHandler);
     } else {
       this.dragNode();
     }
@@ -606,7 +656,7 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
 
   // Renders 'node.title' into node element
   renderNodeText(d, domNode) {
-    const d3Node = d3.select(domNode);
+    const d3Node = this.d3.select(domNode);
     const title = d.title ? d.title : ' ';
 
     const titleText = title.length <= this.maxTitleChars ? title :
@@ -649,7 +699,7 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
       .on('mouseup', this.handleNodeMouseUp)
       .on('mouseenter', this.handleNodeMouseEnter)
       .on('mouseleave', this.handleNodeMouseLeave)
-      .call(d3.drag().on('start', this.handleNodeDrag));
+      .call(this.d3.drag().on('start', this.handleNodeDrag));
 
     newNodes.append('use').classed('subtypeShape', true)
       .attr('x', -this.nodeSize / 2).attr('y', -this.nodeSize / 2).attr('width', this.nodeSize).attr('height', this.nodeSize);
@@ -669,10 +719,10 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
     nodes.each((d, i, els) => {
       const style = self.getNodeStyle(d, self.selected);
 
-      d3.select(els[i])
+      this.d3.select(els[i])
         .attr('style', style);
 
-      d3.select(els[i]).select('use.shape')
+      this.d3.select(els[i]).select('use.shape')
         .attr('href', '#empty');
       this.renderNodeText(d, els[i]);
     })
@@ -692,7 +742,7 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
     const newEdges = edges.enter().append('g').classed('edge', true);
     newEdges
       .on('mousedown', this.handleEdgeMouseDown)
-      .call(d3.drag().on('start', this.handleEdgeDrag));
+      .call(this.d3.drag().on('start', this.handleEdgeDrag));
 
     newEdges.append('path');
     newEdges.append('use');
@@ -705,7 +755,7 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
       .each((d, i, els) => {
         const style = self.getEdgeStyle(d, self.selected);
         const trans = self.getEdgeHandleTransformation(d);
-        d3.select(els[i])
+        this.d3.select(els[i])
           .attr('style', style)
           .select('use')
           .attr('href', '#specialEdge')
@@ -725,10 +775,10 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
     this.elemView = this.elementRef.nativeElement.querySelector('#view');
     this.elemEntities = this.elementRef.nativeElement.querySelector('#entities');
 
-    const view = d3.select(this.elemView)
+    const view = this.d3.select(this.elemView)
       .attr('tansform', this.viewTransform);
 
-    const entities = d3.select(this.elemEntities);
+    const entities = this.d3.select(this.elemEntities);
 
     this.renderNodes(entities, nodes);
     this.renderEdges(entities, edges);

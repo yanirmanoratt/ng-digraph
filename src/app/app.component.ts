@@ -1,4 +1,5 @@
 import { Component, AfterViewInit, ViewChild } from '@angular/core';
+import { NgraphComponent } from './draw/ngraph/ngraph.component';
 
 const EMPTY_TYPE = 'empty'; // Empty node type
 const SPECIAL_TYPE = 'special';
@@ -61,14 +62,21 @@ const sample = {
 export class AppComponent {
   title = 'app works!';
   // @ViewChild('d3graph') d3graph;
+  @ViewChild(NgraphComponent) graph: NgraphComponent
   nodes = [];
   edges = [];
   selected = {};
   NODE_KEY = 'id'; // Key used to identify nodes
+  readOnly = false;
 
   constructor() {
     this.nodes = sample.nodes;
     this.edges = sample.edges;
+  }
+
+  exportDate(): void {
+    // http call
+    console.log(`graph data: nodes - ${JSON.stringify(this.nodes)} , edges - ${JSON.stringify(this.edges)}`);
   }
 
   // Helper to find the index of a given node
@@ -94,15 +102,10 @@ export class AppComponent {
     } else {
       this.selected = {};
     }
-    console.log('onSelectNode', viewNode);
+    // console.log('onSelectNode', viewNode);
   }
 
   onCreateNode({ x, y }) {
-    const nodes = this.nodes;
-    // This is just an example - any sort of logic
-    // could be used here to determine node type
-    // There is also support for subtypes. (see 'sample' above)
-    // The subtype geometry will underlay the 'type' geometry for a node
     const type = Math.random() < 0.25 ? SPECIAL_TYPE : EMPTY_TYPE;
 
     const viewNode = {
@@ -113,8 +116,23 @@ export class AppComponent {
       y: y
     };
 
-    nodes.push(viewNode);
-    this.nodes = nodes;
+    this.nodes.push(viewNode);
+    this.graph.renderView();
+  }
+
+  // Creates a new node between two edges
+  onCreateEdge({ sourceNode: sourceViewNode, hoveredNode: targetViewNode }) {
+    // This is just an example - any sort of logic
+    // could be used here to determine edge type
+    const type = sourceViewNode.type === SPECIAL_TYPE ? SPECIAL_EDGE_TYPE : EMPTY_EDGE_TYPE;
+
+    const viewEdge = {
+      source: sourceViewNode[this.NODE_KEY],
+      target: targetViewNode[this.NODE_KEY],
+      type: type
+    };
+    this.edges.push(viewEdge);
+    this.graph.renderView();
   }
 
   // Called by 'drag' handler, etc..
@@ -132,20 +150,7 @@ export class AppComponent {
     edge.source = sourceViewNode[this.NODE_KEY];
     edge.target = targetViewNode[this.NODE_KEY];
     this.edges[i] = edge;
-  }
-
-  // Creates a new node between two edges
-  onCreateEdge({ sourceNode: sourceViewNode, hoveredNode: targetViewNode }) {
-    // This is just an example - any sort of logic
-    // could be used here to determine edge type
-    const type = sourceViewNode.type === SPECIAL_TYPE ? SPECIAL_EDGE_TYPE : EMPTY_EDGE_TYPE;
-
-    const viewEdge = {
-      source: sourceViewNode[this.NODE_KEY],
-      target: targetViewNode[this.NODE_KEY],
-      type: type
-    };
-    this.edges.push(viewEdge);
+    this.graph.renderView();
   }
 
   // Edge 'mouseUp' handler

@@ -8,8 +8,7 @@ import {
   OnDestroy,
   Output,
   EventEmitter,
-  // ChangeDetectionStrategy,
-  // ChangeDetectorRef
+  HostListener
 } from '@angular/core';
 
 import * as d3 from 'd3';
@@ -34,11 +33,9 @@ function getDistance(pt1, pt2) {
 }
 
 @Component({
-  selector: 'app-digraph',
+  selector: 'app-tempgraph',
   encapsulation: ViewEncapsulation.None,
-  // changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-  {{renderView()}}
   <div id='viewWrapper' class="wrapper">
     <svg id='svgRoot'>
       <defs>
@@ -47,10 +44,6 @@ function getDistance(pt1, pt2) {
         </symbol>
         <symbol viewBox="0 0 50 50" id="specialEdge">
           <rect transform="rotate(45)"  x="25" y="-4.5" width="15" height="15" fill="currentColor"></rect>
-        </symbol>
-
-        <symbol viewBox="0 0 100 100" id="specialChild">
-          <rect x="2.5" y="0" width="95" height="97.5" fill="rgba(30, 144, 255, 0.12)"></rect>
         </symbol>
 
         <marker id="end-arrow"
@@ -96,14 +89,80 @@ function getDistance(pt1, pt2) {
               [attr.height]="gridSize"
               fill="url(#grid)">
         </rect>
-        <svg:g id='entities' ref='entities'></svg:g>
+        <svg:g id='entities' ref='entities'>
+
+          <svg:g *ngFor="let node of nodes; trackBy:trackNodeBy"
+          class="node"
+          [attr.transform]="getNodeTransformation(node)">
+            <use class="subtypeShape"
+            [attr.x]="-nodeSize / 2"
+            [attr.y]="-nodeSize / 2"
+            [attr.width]="nodeSize"
+            [attr.height]="nodeSize">
+            </use>
+            <use class="shape"
+            [attr.x]="-nodeSize / 2"
+            [attr.y]="-(nodeSize / 2) +10"
+            [attr.width]="nodeSize"
+            [attr.height]="nodeSize"
+            href="#empty"></use>
+              <text text-anchor="middle"
+              fill="#000" stroke="#000" dy="18">
+                {{node.title}}
+              </text>
+          </svg:g>
+
+          <svg:g *ngFor="let edge of edges; trackBy:trackLinkBy" class="edge">
+            <path [attr.d]="getPathDescription(edge)"></path>
+            <use href="#specialEdge"
+            [attr.transform]="getEdgeHandleTransformation(edge)"
+            [attr.width]="edgeHandleSize"
+            [attr.height]="edgeHandleSize"
+            ></use>
+          </svg:g>
+
+        </svg:g>
       </svg:g>
     </svg>
   </div>
-    `,
-  styleUrls: ['./digraph.component.css']
+  `,
+  styles: [`
+  .wrapper{
+    height: 100%;
+    margin: 0px;
+    display: flex;
+    box-shadow: none;
+    opacity: 1;
+    background: rgb(249, 249, 249);
+}
+svg{
+  align-content: stretch;
+  flex: 1;
+}
+.node{
+    color: #fff;
+    stroke: dodgerblue;
+    fill: #fff;
+    filter: url(#dropshadow);
+    stroke-width: 1px;
+    cursor: pointer;
+}
+shape{
+  fill: inherit;
+  stroke: dark;
+  stroke-width: 0.5px;
+}
+
+.edge{
+  color: #fff;
+  stroke: dodgerblue;
+  stroke-width: 2px;
+  marker-end: url(#end-arrow);
+  cursor: pointer;
+}
+`]
 })
-export class DigraphComponent implements AfterViewInit, OnDestroy {
+export class TempgraphComponent implements AfterViewInit, OnDestroy {
   hoveredNode: any;
   gridSize = 40960;
   nodeSize = 150;
@@ -212,11 +271,19 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
 
     // On the initial load, the 'view' <g> doesn't exist
     // until ngAfterViewInit. Manually render the first view.
-    this.renderView();
+    // this.renderView();
 
-    setTimeout(function () {
-      this.handleZoomToFit();
-    }.bind(this), this.zoomDelay);
+    // setTimeout(function () {
+    //   this.handleZoomToFit();
+    // }.bind(this), this.zoomDelay);
+  }
+
+  trackNodeBy(index, node): any {
+    return node.id;
+  }
+
+  trackLinkBy(index, link): any {
+    return link.index;
   }
 
   /*
@@ -509,7 +576,7 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
         d.y += d3.event.dy;
         return 'translate(' + d.x + ',' + d.y + ')';
       });
-      self.renderView();
+      // this.renderView();
     }
 
     function ended() {
@@ -593,9 +660,9 @@ export class DigraphComponent implements AfterViewInit, OnDestroy {
   }
 
   getEdgeStyle(d, selected) {
-    return d === selected ?
-      'color:dodgerblue;stroke:dodgerblue;stroke-width:2px;marker-end:url(#end-arrow);cursor:pointer' :
-      'color:#FFF;stroke:dodgerblue;stroke-width:2px;marker-end:url(#end-arrow);cursor:pointer';
+    return d === selected ? 'dodgerblue' : '#fff';
+    // { color: 'dodgerblue', stroke: 'dodgerblue', strokeWidth: '2px', markerEnd: 'url(#end-arrow)', cursor: 'pointer' } :
+    // { color: '#FFF', stroke: 'dodgerblue', strokeWidth: '2px', markerEnd: 'url(#end-arrow)', cursor: 'pointer' };
   }
 
   getTextStyle(d, selected) {
